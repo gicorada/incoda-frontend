@@ -3,6 +3,9 @@ import {joinQueue, getPosition, leaveQueue, signalFinished} from "../api/queue.j
 import { useStore } from "../stores/useStore.js";
 
 export default function User() {
+    const WS_URL = "ws://" + import.meta.env.VITE_BACKEND_URL + ":" + import.meta.env.VITE_BACKEND_PORT;
+    const tenantId = import.meta.env.VITE_TENANT_ID;
+
     const store = useStore();
     const [position, setPosition] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -20,6 +23,8 @@ export default function User() {
         store.setId(id);
     }, [id]);
 
+
+
     const handleJoin = async () => {
         const data = await joinQueue(name);
         if(data.error) {
@@ -28,7 +33,7 @@ export default function User() {
 
         setId(data.id);
         localStorage.setItem("userId", data.id);
-        setPosition(1);
+        setPosition(data.position);
     };
 
     const handleLeave = () => {
@@ -54,9 +59,9 @@ export default function User() {
     }
 
     const handleResetState = () => {
-        setPosition(-1);
-        setCalledAt(0);
-        setCalledSeconds(0);
+        setPosition(null);
+        setCalledAt(null);
+        setCalledSeconds(null);
     }
 
     const handleResetIdentity = () => {
@@ -67,25 +72,92 @@ export default function User() {
         store.resetIdentity();
     }
 
-    useEffect(() => {
-        if (!id || position === -1 || position === 0) return;
+    // polling posizione (con gestione errori)
+    const pollPosition = async () => {
+        try {
+            const data = await getPosition(id);
+            console.log(data);
+            if (data && typeof data.position !== "undefined") {
+                if(data.position === -1) setPosition(null)
+                else setPosition(data.position);
+            }
+            setLoading(false);
+        } catch (e) {
+            console.error("Errore getPosition (poll):", e);
+            setLoading(false);
+        }
+    };
 
-        const ws = new WebSocket("ws://localhost:8080/ws/queue");
+    // Sostituisci il useEffect esistente che apre il WebSocket con questo snippet
+    useEffect(() => {
+        if (!id || (position != null && position === 0)) return;
+        if (!WS_URL) {
+            console.warn("WebSocket URL mancante (VITE_BACKEND_URL/VITE_BACKEND_PORT).");
+            return;
+        }
+
+        let ws;
+        try {
+            ws = new WebSocket(`${WS_URL}/ws/queue`);
+        } catch (err) {
+            console.error("Errore durante la creazione del WebSocket:", err);
+            return;
+        }
+
+        ws.onopen = () => {
+            console.log("WebSocket aperto:", ws.url);
+        };
+
         ws.onmessage = (ev) => {
-            const msg = JSON.parse(ev.data);
-            if (msg.type === "called" && msg.id === id) {
-                handleCalled();
+            try {
+                const msg = JSON.parse(ev.data);
+
+                // Controllo se il messaggio è rilevante per questo tenant
+                if (msg.tenant === tenantId) {
+                    if(msg.type === "called") {
+                        if (msg.id === id) {
+                            // Sono stato chiamato
+                            handleCalled();
+                        } else {
+                            // Qualcun altro è stato chiamato, quindi facciamo polling per aggiornare la nostra posizione
+                            pollPosition()
+                        }
+                    } else if(msg.type === "left") {
+                        // Significa che necessariamente siamo avanzati nella coda, quindi rifacciamo polling
+                        pollPosition();
+                    }
+                }
+            } catch (e) {
+                console.error("Errore parsing message WS:", e);
             }
         };
 
-        const interval = setInterval(async () => {
-            const data = await getPosition(id);
-            setPosition(data.position);
-            setLoading(false);
-        }, 5000);
+        ws.onerror = (ev) => {
+            console.error("WebSocket error:", ev);
+        };
 
-        return () => { clearInterval(interval); ws.close(); };
-    }, [id, position]);
+        ws.onclose = (ev) => {
+            console.warn("WebSocket chiuso:", ev.code, ev.reason);
+        };
+
+
+
+        const interval = setInterval(pollPosition, 30000);
+        // esegui subito
+        pollPosition();
+
+        return () => {
+            clearInterval(interval);
+            try {
+                if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+                else if (ws && ws.readyState === WebSocket.CONNECTING) ws.close();
+            } catch (e) {
+                console.warn("Errore chiusura WS:", e);
+            }
+        };
+        // rimosso `position` per evitare ricreazioni continue
+    }, [id, tenantId, WS_URL]);
+
 
     useEffect(() => {
         if (calledAt == null) return;
@@ -107,7 +179,7 @@ export default function User() {
                         <>
                             <p className="welcome">Benvenutə, {name}!</p>
 
-                            { position !== -1 ? (
+                            { position !== null ? (
                                 position === 0 ? (
                                     <>
                                         <div className="position-box" style={{ background: '#ff9800' }}>
