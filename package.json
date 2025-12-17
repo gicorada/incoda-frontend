@@ -1,10 +1,21 @@
 {
   "name": "incoda-frontend",
+  "author": "gicorada",
+  "email": "incoda@gicorada.com",
+  "url": "https://gicorada.com/",
+  "repository": "github:gicorada/incoda-frontend",
+  "homepage": "https://github.com/gicorada/incoda-frontend",
+  "bugs": {
+    "url": "https://github.com/gicorada/incoda-frontend/issues",
+    "email": "incoda@gicorada.com"
+  },
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev-host": "vite --host",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
