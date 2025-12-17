@@ -2,6 +2,11 @@ import {useEffect, useState} from "react";
 import { callNext, getQueue } from "../api/queue.js";
 
 export default function Admin() {
+    return "Unimplemented";
+}
+
+/*
+export default function Admin() {
     const [current, setCurrent] = useState(null);
     const [queue, setQueue] = useState([]);
 
@@ -42,3 +47,4 @@ export default function Admin() {
         </div>
     );
 }
+*/
